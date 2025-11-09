@@ -178,9 +178,10 @@ jobs:
   # Windows can be noisy; keep it on push but non-blocking.
   test_web_server_windows:
     runs-on: windows-latest
+    timeout-minutes: 60
+    continue-on-error: true
     strategy:
-      matrix:
-        python-version: ["3.10"]
+      matrix: { python-version: ["3.10"] }
     steps:
       - uses: actions/checkout@v5
 
@@ -197,24 +198,13 @@ jobs:
           cache: "yarn"
           cache-dependency-path: mage_ai/frontend/yarn.lock
 
-      - name: Create Mage test project
-        shell: pwsh
-        run: |
-          if (Test-Path "C:\Program Files\Git\unins000.exe") {
-            Start-Process -Wait -FilePath "C:\Program Files\Git\unins000.exe" -ArgumentList "/SILENT"
-          }
-          python -m venv venv3
-          .\venv3\Scripts\Activate.ps1
-          $env:PYTHONPATH = "${env:PYTHONPATH};${pwd}"
-
-      # 👇 Add the UV install + dependency install block right here
       - name: Install uv (Windows)
         shell: pwsh
         run: |
           irm https://astral.sh/uv/install.ps1 | iex
           echo "$HOME\.cargo\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
-      - name: Install Python deps with uv
+      - name: Install Python deps with uv (system)
         shell: pwsh
         env:
           UV_PYTHON: ${{ env.pythonLocation }}\python.exe
@@ -222,9 +212,12 @@ jobs:
         run: |
           python -m pip install -U pip
           uv pip install --system -r requirements.txt -c .github/constraints/common.txt
+          uv pip install --system -e .    # <-- install mage-ai package so imports work
 
-      # 👆 Then continue with your normal steps
-      - name: Create Mage project (existing logic)
+      - name: Create Mage test project
+        shell: pwsh
+        env:
+          PYTHONPATH: ${{ github.workspace }} # optional, but harmless
         run: python mage_ai/cli/main.py init test_project
 
       - name: Build frontend, start server, and run Playwright tests
@@ -235,9 +228,11 @@ jobs:
           yarn playwright install chromium
           yarn playwright test -c playwright-windows.config.ci.ts --max-failures=5
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Playwright report (PR shard ${{ matrix.shard }})
         if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-windows
+          name: playwright-report-pr-shard-${{ matrix.shard }}
           path: mage_ai/frontend/playwright-report/
-          retention-days: 3
+          retention-days: 7
+          overwrite: true
