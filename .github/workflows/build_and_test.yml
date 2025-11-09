@@ -8,6 +8,7 @@ on:
       - "pyproject.toml"
       - "requirements.txt"
       - "setup.py"
+      - ".github/workflows/**"
   pull_request:
     paths:
       - "mage_ai/**"
@@ -15,7 +16,7 @@ on:
       - "pyproject.toml"
       - "requirements.txt"
       - "setup.py"
-
+      - ".github/workflows/**"
 env:
   ENV: test_mage
 
