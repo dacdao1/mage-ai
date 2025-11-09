@@ -54,7 +54,7 @@ jobs:
   test_backend:
     runs-on: ubuntu-latest
     needs: changes
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: true
       matrix:
@@ -69,20 +69,31 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
 
-      - name: System deps
+      - name: System deps (avoid slow source builds)
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y --no-install-recommends freetds-dev
+          sudo apt-get install -y --no-install-recommends \
+            freetds-dev unixodbc-dev build-essential libssl-dev libffi-dev
 
-      - name: Install dependencies
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install Python deps (fast + deterministic)
         env:
-          PIP_DEFAULT_TIMEOUT: "120"
+          UV_PYTHON: ${{ env.pythonLocation }}/bin/python
+          UV_INDEX_TIMEOUT: "120"
         run: |
           python -m pip install --upgrade pip
-          pip install --retries 2 --prefer-binary "git+https://github.com/mage-ai/sqlglot#egg=sqlglot"
-          pip install --retries 2 --prefer-binary -r requirements.txt -c .github/constraints/common.txt
-          pip install --retries 2 --prefer-binary mage_integrations/
-          pip install --retries 2 --prefer-binary "git+https://github.com/mage-ai/singer-python.git#egg=singer-python"
+
+          uv pip install --system "git+https://github.com/mage-ai/sqlglot#egg=sqlglot"
+
+          uv pip install --system -r requirements.txt -c .github/constraints/common.txt
+
+          uv pip install --system mage_integrations/
+
+          uv pip install --system "git+https://github.com/mage-ai/singer-python.git#egg=singer-python"
 
       - name: Run unit tests
         run: python3 -m unittest discover -s mage_ai --failfast
@@ -166,10 +177,7 @@ jobs:
   # Keep the existing push-time UI coverage (Linux + Windows).
   # Windows can be noisy; keep it on push but non-blocking.
   test_web_server_windows:
-    if: github.event_name == 'push'
     runs-on: windows-latest
-    timeout-minutes: 60
-    continue-on-error: true
     strategy:
       matrix:
         python-version: ["3.10"]
@@ -198,9 +206,26 @@ jobs:
           python -m venv venv3
           .\venv3\Scripts\Activate.ps1
           $env:PYTHONPATH = "${env:PYTHONPATH};${pwd}"
+
+      # 👇 Add the UV install + dependency install block right here
+      - name: Install uv (Windows)
+        shell: pwsh
+        run: |
+          irm https://astral.sh/uv/install.ps1 | iex
+          echo "$HOME\.cargo\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Install Python deps with uv
+        shell: pwsh
+        env:
+          UV_PYTHON: ${{ env.pythonLocation }}\python.exe
+          UV_INDEX_TIMEOUT: "180"
+        run: |
           python -m pip install -U pip
-          python -m pip install -r requirements.txt
-          python mage_ai/cli/main.py init test_project
+          uv pip install --system -r requirements.txt -c .github/constraints/common.txt
+
+      # 👆 Then continue with your normal steps
+      - name: Create Mage project (existing logic)
+        run: python mage_ai/cli/main.py init test_project
 
       - name: Build frontend, start server, and run Playwright tests
         working-directory: mage_ai/frontend/
