@@ -185,18 +185,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: "pip"
-
-      - name: Set up Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: "20.15.1"
-          cache: "yarn"
-          cache-dependency-path: mage_ai/frontend/yarn.lock
+      - name: Create venv (Windows)
+        shell: pwsh
+        run: |
+          if (Test-Path "C:\Program Files\Git\unins000.exe") {
+            Start-Process -Wait -FilePath "C:\Program Files\Git\unins000.exe" -ArgumentList "/SILENT"
+          }
+          python -m venv venv3
+          .\venv3\Scripts\python.exe -V
 
       - name: Install uv (Windows)
         shell: pwsh
@@ -204,21 +200,20 @@ jobs:
           irm https://astral.sh/uv/install.ps1 | iex
           echo "$HOME\.cargo\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
-      - name: Install Python deps with uv (system)
+      - name: Install Python deps into venv with uv
         shell: pwsh
         env:
-          UV_PYTHON: ${{ env.pythonLocation }}\python.exe
+          UV_PYTHON: ${{ github.workspace }}\venv3\Scripts\python.exe
           UV_INDEX_TIMEOUT: "180"
         run: |
-          python -m pip install -U pip
-          uv pip install --system -r requirements.txt -c .github/constraints/common.txt
-          uv pip install --system -e .    # <-- install mage-ai package so imports work
+          .\venv3\Scripts\python.exe -m pip install -U pip
+          uv pip install -r requirements.txt -c .github/constraints/common.txt
+          uv pip install -e .
 
-      - name: Create Mage test project
+      - name: Create Mage test project (use venv Python)
         shell: pwsh
-        env:
-          PYTHONPATH: ${{ github.workspace }} # optional, but harmless
-        run: python mage_ai/cli/main.py init test_project
+        run: |
+          .\venv3\Scripts\python.exe mage_ai/cli/main.py init test_project
 
       - name: Build frontend, start server, and run Playwright tests
         working-directory: mage_ai/frontend/
@@ -228,11 +223,11 @@ jobs:
           yarn playwright install chromium
           yarn playwright test -c playwright-windows.config.ci.ts --max-failures=5
 
-      - name: Upload Playwright report (PR shard ${{ matrix.shard }})
+      - name: Upload Playwright report (Windows)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-pr-shard-${{ matrix.shard }}
+          name: playwright-report-windows
           path: mage_ai/frontend/playwright-report/
           retention-days: 7
           overwrite: true
