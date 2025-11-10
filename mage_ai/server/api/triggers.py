@@ -55,6 +55,22 @@ class ApiTriggerPipelineHandler(BaseHandler):
         pipeline = Pipeline.get(
             pipeline_schedule.pipeline_uuid, repo_path=pipeline_schedule.repo_path
         )
+        
+        if pipeline_schedule.settings and pipeline_schedule.settings.get('skip_if_previous_running'):
+        # look for a non-terminal run
+            existing_run = PipelineRun.query.filter(
+                PipelineRun.pipeline_schedule_id == pipeline_schedule.id,
+                PipelineRun.status.in_(['initial', 'running', 'queued']),
+            ).order_by(PipelineRun.created_at.desc()).first()
+
+            if existing_run:
+            # Skip creating a new run
+                self.write(dict(
+                    skipped=True,
+                    reason='previous_run_still_in_progress',
+                    previous_run_id=existing_run.id,
+                ))
+                return
         pipeline_run = create_and_start_pipeline_run(
             pipeline,
             pipeline_schedule,
