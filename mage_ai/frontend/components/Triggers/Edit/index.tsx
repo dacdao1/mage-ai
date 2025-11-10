@@ -1627,9 +1627,7 @@ function Edit({
           </FlexContainer>
         </Spacing>
 
-        {ScheduleTypeEnum.TIME === scheduleType && (
-          <>
-            <Spacing mt={PADDING_UNITS}>
+        <Spacing mt={PADDING_UNITS}>
               <FlexContainer alignItems="center">
                 <Checkbox
                   checked={settings?.skip_if_previous_running}
@@ -1641,6 +1639,9 @@ function Edit({
                 />
               </FlexContainer>
             </Spacing>
+
+        {ScheduleTypeEnum.TIME === scheduleType && (
+          <>
             <Spacing mt={PADDING_UNITS}>
               <FlexContainer alignItems="center">
                 <Checkbox
